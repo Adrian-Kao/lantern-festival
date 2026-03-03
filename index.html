@@ -1,0 +1,571 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>湯圓物理樂園 - 修正版</title>
+    <style>
+         :root {
+            --bg-color: #fff5e6;
+            --primary-color: #ff6b6b;
+            --secondary-color: #4ecdc4;
+        }
+        
+        body {
+            margin: 0;
+            font-family: "PingFang TC", "Microsoft JhengHei", sans-serif;
+            background-color: var(--bg-color);
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+            height: 100vh;
+        }
+        
+        nav {
+            background: white;
+            padding: 10px;
+            display: flex;
+            justify-content: center;
+            gap: 15px;
+            box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
+            z-index: 100;
+        }
+        
+        button.nav-btn {
+            padding: 10px 20px;
+            border: none;
+            border-radius: 20px;
+            background: #eee;
+            cursor: pointer;
+            transition: 0.3s;
+        }
+        
+        button.nav-btn.active {
+            background: var(--primary-color);
+            color: white;
+        }
+        
+        section {
+            display: none;
+            flex: 1;
+            position: relative;
+            padding: 20px;
+            overflow: hidden;
+        }
+        
+        section.active {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+        /* 點擊區 */
+        
+        .ty-container {
+            display: flex;
+            gap: 30px;
+            flex-wrap: wrap;
+            justify-content: center;
+            margin-top: 20px;
+        }
+        
+        .tangyuan {
+            width: 80px;
+            height: 80px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            user-select: none;
+            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.1);
+            font-weight: bold;
+            font-size: 20px;
+        }
+        
+        .locked {
+            background: #ccc !important;
+            filter: grayscale(1);
+            cursor: not-allowed;
+            color: #777;
+        }
+        
+        @keyframes bounce {
+            0%,
+            100% {
+                transform: scale(1);
+            }
+            30% {
+                transform: scale(1.2, 0.8);
+            }
+            60% {
+                transform: scale(0.9, 1.1);
+            }
+        }
+        
+        .animate-bounce {
+            animation: bounce 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+        }
+        /* 燈謎區 */
+        
+        .riddle-card {
+            background: white;
+            padding: 30px;
+            border-radius: 20px;
+            max-width: 400px;
+            width: 90%;
+            text-align: center;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.1);
+        }
+        /* 物理區 */
+        
+        #physics {
+            padding: 0;
+            background: #2c3e50;
+        }
+        
+        canvas {
+            width: 100%;
+            height: 100%;
+            display: block;
+        }
+        
+        .physics-ui {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            color: white;
+            pointer-events: none;
+        }
+    </style>
+</head>
+
+<body>
+
+    <nav>
+        <button class="nav-btn active">首頁點點</button>
+        <button class="nav-btn">猜燈謎解鎖</button>
+        <button class="nav-btn">物理樂園</button>
+    </nav>
+
+    <section id="play" class="active">
+        <h2>點擊湯圓測試彈性！</h2>
+        <div id="combo-display" style="font-size: 24px; color: #ff6b6b; height: 30px;"></div>
+        <div class="ty-container" id="ty-main-list"></div>
+    </section>
+
+    <section id="riddle">
+        <div class="riddle-card">
+            <h3 id="riddle-question">載入中...</h3>
+            <div class="fill-in-the-blank">
+                <input type="text" id="riddle-answer" placeholder="請輸入答案" style="width: 100%; padding: 10px; margin-top: 15px; border: 2px solid #eee; border-radius: 10px;">
+                <button id="submit-answer" style="margin-top: 10px; padding: 10px 20px; border: none; border-radius: 10px; background: var(--primary-color); color: white; cursor: pointer;">提交</button>
+            </div>
+            <p id="riddle-feedback" style="margin-top: 15px; font-weight: bold;"></p>
+        </div>
+    </section>
+
+    <section id="physics">
+        <div class="physics-ui">
+            <h3>物理實驗室</h3>
+            <p>點擊畫面產生已解鎖的湯圓！</p>
+        </div>
+        <canvas id="physicsCanvas"></canvas>
+    </section>
+
+    <script>
+        // =========================
+        // 0) 小工具：補全缺失的函數
+        // =========================
+        function norm(str) {
+            return str ? str.toString().trim().toLowerCase() : "";
+        }
+
+        function rand(min, max) {
+            return Math.floor(Math.random() * (max - min + 1)) + min;
+        }
+
+        // =========================
+        // 1) 湯圓資料與題庫 (保留原始資料)
+        // =========================
+        const tangyuanData = [{
+            id: 1,
+            name: "芝麻",
+            color: "#ffffff",
+            fill: "芝",
+            border: "#333"
+        }, {
+            id: 2,
+            name: "花生",
+            color: "#ffeb3b",
+            fill: "花",
+            border: "#f57c00"
+        }, {
+            id: 3,
+            name: "抹茶",
+            color: "#8bc34a",
+            fill: "茶",
+            border: "#2e7d32"
+        }, {
+            id: 4,
+            name: "肉餡",
+            color: "#ffb6c1",
+            fill: "肉",
+            border: "#c2185b"
+        }, {
+            id: 5,
+            name: "布丁",
+            color: "#c8a2c8",
+            fill: "布",
+            border: "#6a1b9a"
+        }, {
+            id: 6,
+            name: "黑糖",
+            color: "#d7ccc8",
+            fill: "糖",
+            border: "#5d4037"
+        }, {
+            id: 7,
+            name: "草莓",
+            color: "#ff8a80",
+            fill: "莓",
+            border: "#d32f2f"
+        }, {
+            id: 8,
+            name: "巧克力",
+            color: "#8d6e63",
+            fill: "巧",
+            border: "#3e2723"
+        }, {
+            id: 9,
+            name: "奶茶",
+            color: "#ffe0b2",
+            fill: "奶",
+            border: "#ef6c00"
+        }, {
+            id: 10,
+            name: "鳳梨",
+            color: "#fff176",
+            fill: "鳳",
+            border: "#fbc02d"
+        }, {
+            id: 11,
+            name: "椰香",
+            color: "#f5f5f5",
+            fill: "椰",
+            border: "#9e9e9e"
+        }, {
+            id: 12,
+            name: "藍莓",
+            color: "#90caf9",
+            fill: "藍",
+            border: "#1565c0"
+        }, {
+            id: 13,
+            name: "煉乳",
+            color: "#e0f7fa",
+            fill: "煉",
+            border: "#00838f"
+        }, {
+            id: 14,
+            name: "焙茶",
+            color: "#dcedc8",
+            fill: "焙",
+            border: "#558b2f"
+        }, {
+            id: 15,
+            name: "桂花",
+            color: "#fff9c4",
+            fill: "桂",
+            border: "#f9a825"
+        }, {
+            id: 16,
+            name: "提拉米蘇",
+            color: "#ffd700",
+            fill: "提",
+            border: "#b8860b"
+        }, {
+            id: 17,
+            name: "星河",
+            color: "#cfd8ff",
+            fill: "星",
+            border: "#283593"
+        }, {
+            id: 18,
+            name: "煙火",
+            color: "#ffcdd2",
+            fill: "火",
+            border: "#ad1457"
+        }];
+
+        const riddleBank = [{
+                id: 1,
+                type: "input",
+                question: "為什麼戴眼鏡切洋蔥還是會哭？",
+                answer: "切到手",
+                rewardId: 2
+            }, {
+                id: 2,
+                type: "input",
+                question: "壓扁的泡芙突然飛起來了，因為它變成了？",
+                answer: "蝙蝠",
+                rewardId: 3
+            }, {
+                id: 3,
+                type: "input",
+                question: "什麼國家最乾燥？",
+                answer: "德國",
+                rewardId: 16
+            }, {
+                id: 4,
+                type: "choice",
+                question: "男朋友最喜歡什麼顏色?",
+                choices: ["藍色", "攝影社", "麥克阿瑟", "垃圾"],
+                answerIndex: 0,
+                rewardId: 4
+            }, {
+                id: 5,
+                type: "choice",
+                question: "我最喜歡什麼球類運動",
+                choices: ["阿聯球", "追求", "富貴險中求", "桌球"],
+                answerIndex: 3,
+                rewardId: 5
+            }, {
+                id: 5,
+                type: "choice",
+                question: "我最喜歡什麼球類運動",
+                choices: ["阿聯球", "追求", "富貴險中求", "桌球"],
+                answerIndex: 1,
+                rewardId: 6
+            }
+            // ... 可自行補回其他題目
+        ];
+
+        // =========================
+        // 2) 狀態管理
+        // =========================
+        const STORAGE_KEY = "ty_unlocked_v2";
+        const RID_IDX_KEY = "ty_riddle_idx_v2";
+
+        let gameState = {
+            unlockedIds: JSON.parse(localStorage.getItem(STORAGE_KEY)) || [1],
+            currentRiddleIdx: Number(localStorage.getItem(RID_IDX_KEY)) || 0,
+            comboCount: 0,
+            comboTimer: null
+        };
+
+        // =========================
+        // 3) 導覽切換
+        // =========================
+        document.querySelectorAll(".nav-btn").forEach(btn => {
+            btn.addEventListener("click", () => {
+                const text = btn.textContent;
+                const targetId = text.includes("首頁") ? "play" : text.includes("猜燈謎") ? "riddle" : "physics";
+                showSection(targetId, btn);
+            });
+        });
+
+        function showSection(id, btnEl) {
+            document.querySelectorAll("section").forEach(s => s.classList.remove("active"));
+            document.querySelectorAll(".nav-btn").forEach(b => b.classList.remove("active"));
+            document.getElementById(id).classList.add("active");
+            btnEl.classList.add("active");
+
+            if (id === "play") renderPlayZone();
+            if (id === "riddle") renderRiddle();
+            if (id === "physics") initPhysics();
+            else stopPhysics();
+        }
+
+        // =========================
+        // 4) 點擊與解鎖邏輯
+        // =========================
+        function renderPlayZone() {
+            const container = document.getElementById("ty-main-list");
+            container.innerHTML = "";
+            tangyuanData.forEach(ty => {
+                const isLocked = !gameState.unlockedIds.includes(ty.id);
+                const div = document.createElement("div");
+                div.className = `tangyuan ${isLocked ? "locked" : ""}`;
+                div.style.backgroundColor = isLocked ? "#ccc" : ty.color;
+                div.style.border = `3px solid ${ty.border}`;
+                div.innerText = isLocked ? "?" : ty.fill;
+                if (!isLocked) div.onclick = () => handleBounce(div);
+                container.appendChild(div);
+            });
+        }
+
+        function handleBounce(el) {
+            el.classList.remove("animate-bounce");
+            void el.offsetWidth;
+            el.classList.add("animate-bounce");
+            gameState.comboCount++;
+            document.getElementById("combo-display").innerText = `Q彈連擊 x${gameState.comboCount}`;
+            clearTimeout(gameState.comboTimer);
+            gameState.comboTimer = setTimeout(() => {
+                gameState.comboCount = 0;
+                document.getElementById("combo-display").innerText = "";
+            }, 2000);
+        }
+
+        function renderRiddle() {
+            const riddle = riddleBank[gameState.currentRiddleIdx];
+            const qEl = document.getElementById("riddle-question");
+            const feedbackEl = document.getElementById("riddle-feedback");
+            const inputEl = document.getElementById("riddle-answer");
+            const submitBtn = document.getElementById("submit-answer");
+
+            feedbackEl.innerText = "";
+            let optWrap = document.getElementById("riddle-choice-wrap");
+            if (optWrap) optWrap.remove();
+
+            if (!riddle) {
+                qEl.innerText = "太棒了！所有燈謎都已解開！🎉";
+                submitBtn.style.display = "none";
+                inputEl.style.display = "none";
+                return;
+            }
+
+            qEl.innerText = riddle.question;
+            if (riddle.type === "choice") {
+                inputEl.style.display = "none";
+                submitBtn.style.display = "none";
+                optWrap = document.createElement("div");
+                optWrap.id = "riddle-choice-wrap";
+                optWrap.style.marginTop = "20px";
+                riddle.choices.forEach((c, idx) => {
+                    const btn = document.createElement("button");
+                    btn.innerText = c;
+                    btn.style.margin = "5px";
+                    btn.style.padding = "10px";
+                    btn.onclick = () => checkAnswer(idx);
+                    optWrap.appendChild(btn);
+                });
+                document.querySelector(".fill-in-the-blank").appendChild(optWrap);
+            } else {
+                inputEl.style.display = "block";
+                inputEl.value = "";
+                submitBtn.style.display = "inline-block";
+            }
+        }
+
+        function checkAnswer(choiceIdx = null) {
+            const riddle = riddleBank[gameState.currentRiddleIdx];
+            const feedbackEl = document.getElementById("riddle-feedback");
+            let isCorrect = false;
+
+            if (riddle.type === "choice") {
+                isCorrect = (choiceIdx === riddle.answerIndex);
+            } else {
+                const userVal = norm(document.getElementById("riddle-answer").value);
+                isCorrect = (userVal === norm(riddle.answer));
+            }
+
+            if (isCorrect) {
+                if (!gameState.unlockedIds.includes(riddle.rewardId)) {
+                    gameState.unlockedIds.push(riddle.rewardId);
+                    localStorage.setItem(STORAGE_KEY, JSON.stringify(gameState.unlockedIds));
+                }
+                feedbackEl.style.color = "green";
+                feedbackEl.innerText = "✅ 答對了！解鎖新口味！";
+                setTimeout(() => {
+                    gameState.currentRiddleIdx++;
+                    localStorage.setItem(RID_IDX_KEY, gameState.currentRiddleIdx);
+                    renderRiddle();
+                }, 1000);
+            } else {
+                feedbackEl.style.color = "red";
+                feedbackEl.innerText = "❌ 答錯了，再試一次！";
+            }
+        }
+
+        document.getElementById("submit-answer").onclick = () => checkAnswer();
+
+        // =========================
+        // 5) 物理引擎
+        // =========================
+        const canvas = document.getElementById("physicsCanvas");
+        const ctx = canvas.getContext("2d");
+        let balls = [];
+        let animationId = null;
+
+        class Ball {
+            constructor(x, y, config) {
+                this.x = x;
+                this.y = y;
+                this.radius = rand(25, 35);
+                this.vx = (Math.random() - 0.5) * 15;
+                this.vy = (Math.random() - 0.5) * 15;
+                this.gravity = 0.6;
+                this.restitution = 0.8;
+                this.color = config.color;
+                this.text = config.fill;
+                this.border = config.border;
+            }
+            update() {
+                this.vy += this.gravity;
+                this.x += this.vx;
+                this.y += this.vy;
+                if (this.y + this.radius > canvas.height) {
+                    this.y = canvas.height - this.radius;
+                    this.vy *= -this.restitution;
+                }
+                if (this.x + this.radius > canvas.width || this.x - this.radius < 0) {
+                    this.vx *= -this.restitution;
+                    this.x = this.x < this.radius ? this.radius : canvas.width - this.radius;
+                }
+            }
+            draw() {
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
+                ctx.fillStyle = this.color;
+                ctx.fill();
+                ctx.strokeStyle = this.border;
+                ctx.lineWidth = 3;
+                ctx.stroke();
+                ctx.fillStyle = this.border;
+                ctx.font = "bold 16px Arial";
+                ctx.textAlign = "center";
+                ctx.textBaseline = "middle";
+                ctx.fillText(this.text, this.x, this.y);
+            }
+        }
+
+        function initPhysics() {
+            balls = [];
+            resize();
+            window.addEventListener('resize', resize);
+            canvas.onclick = (e) => {
+                const rect = canvas.getBoundingClientRect();
+                const unlocked = tangyuanData.filter(t => gameState.unlockedIds.includes(t.id));
+                const config = unlocked[rand(0, unlocked.length - 1)];
+                balls.push(new Ball(e.clientX - rect.left, e.clientY - rect.top, config));
+            };
+            if (!animationId) animate();
+        }
+
+        function resize() {
+            canvas.width = canvas.offsetWidth;
+            canvas.height = canvas.offsetHeight;
+        }
+
+        function animate() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            balls.forEach(b => {
+                b.update();
+                b.draw();
+            });
+            animationId = requestAnimationFrame(animate);
+        }
+
+        function stopPhysics() {
+            cancelAnimationFrame(animationId);
+            animationId = null;
+        }
+
+        // 初始啟動
+        renderPlayZone();
+    </script>
+</body>
+
+</html>
